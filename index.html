@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>සමිතියේ ගිණුම් පද්ධතිය</title>
     <style>
-        :root { --danger: #dc3545; --success: #28a745; --warning: #ffc107; --info: #17a2b8; }
+        :root { --danger: #dc3545; --success: #28a745; --warning: #ffc107; --info: #17a2b8; --loan: #fd7e14; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f7f6; margin: 0; padding: 15px; }
         .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
         h1, h2, h3, h4 { text-align: center; color: #333; }
@@ -18,9 +18,14 @@
         .bg-warning { background-color: var(--warning); color: #000; }
         .bg-success { background-color: var(--success); }
         .bg-info { background-color: var(--info); }
-        .balance-box { font-size: 22px; text-align: center; font-weight: bold; padding: 15px; border-radius: 8px; margin: 15px 0; }
+        .balance-box { font-size: 20px; text-align: center; font-weight: bold; padding: 15px; border-radius: 8px; margin: 10px 0; }
         .balance-pos { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .balance-neg { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        
+        /* Loan Box Button Style */
+        .loan-box-btn { background: #fff3cd; color: #856404; border: 2px dashed var(--loan); cursor: pointer; transition: 0.3s; }
+        .loan-box-btn:hover { background: #ffe8a1; }
+
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
         th { background-color: #343a40; color: white; }
@@ -31,6 +36,11 @@
         .small-text { font-size: 11px; opacity: 0.85; font-weight: normal; }
         .flex-row { display: flex; align-items: center; gap: 10px; }
         .flex-row input[type="checkbox"] { width: auto; }
+
+        /* Modal Popup Styles */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 10px; max-width: 600px; width: 90%; max-height: 85vh; overflow-y: auto; }
+        .close-modal { background: #6c757d; margin-top: 15px; }
     </style>
     <!-- Firebase SDKs (v8) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -65,6 +75,9 @@
         <h2 id="disp-member-id">සාමාජික අංකය: </h2>
         <div id="disp-balance" class="balance-box">ශේෂය: රු. 0.00</div>
         
+        <!-- Loan Button Display -->
+        <div id="loan-summary-area"></div>
+
         <h3>ගනුදෙනු විස්තර</h3>
         <table>
             <thead>
@@ -77,6 +90,26 @@
             <tbody id="member-tx-table"></tbody>
         </table>
         <button onclick="logoutMember()" style="margin-top:20px; background:#6c757d;">ලොග් අවුට් වන්න</button>
+    </div>
+
+    <!-- Loan Details Popup Modal -->
+    <div id="loan-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 style="color: var(--loan);">ණය ගිණුම් විස්තර</h2>
+            <div id="loan-details-body"></div>
+            <h3>පොලී / ණය ගෙවීම් වාර්තාව</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>දිනය</th>
+                        <th>විස්තරය</th>
+                        <th>ගෙවූ මුදල (රු.)</th>
+                    </tr>
+                </thead>
+                <tbody id="loan-history-table"></tbody>
+            </table>
+            <button class="close-modal" onclick="closeLoanModal()">වසා දමන්න</button>
+        </div>
     </div>
 
     <!-- Admin Panel Section -->
@@ -108,6 +141,29 @@
             <label>ඉවත් කිරීමට සාමාජිකයා තෝරන්න:</label>
             <select id="delete-mem-select"></select>
             <button onclick="deleteMember()" style="background:#dc3545;">සාමාජික ගිණුම මකා දමන්න</button>
+        </div>
+
+        <!-- ISSUE LOAN SECTION -->
+        <div class="card" style="border: 1px solid var(--loan);">
+            <h4 style="color: var(--loan);">සාමාජිකයෙකුට ණය මුදලක් ලබාදීම</h4>
+            <label>සාමාජිකයා තෝරන්න:</label>
+            <select id="loan-mem-select"></select>
+            <label>ලබාගත් දිනය:</label>
+            <input type="date" id="loan-date">
+            <input type="number" id="loan-amount" placeholder="ණය මුදල (රු.)">
+            <input type="number" id="loan-rate" step="0.1" placeholder="මාසික පොලී අනුපාතය (%) (උදා: 2.5)">
+            <button onclick="submitLoan()" style="background: var(--loan);">ණය මුදල සටහන් කරන්න</button>
+        </div>
+
+        <!-- RECORD LOAN PAYMENT -->
+        <div class="card" style="border: 1px solid var(--success);">
+            <h4 style="color: var(--success);">ණය / පොලී ගෙවීම් ලබාගැනීම</h4>
+            <label>සාමාජිකයා තෝරන්න:</label>
+            <select id="loan-pay-mem-select"></select>
+            <input type="date" id="loan-pay-date">
+            <input type="number" id="loan-pay-amount" placeholder="ගෙවූ මුදල (රු.)">
+            <input type="text" id="loan-pay-desc" placeholder="විස්තරය (උදා: පෙබරවාරි මාසයේ පොලිය)">
+            <button onclick="submitLoanPayment()" style="background: var(--success);">ගෙවීම සුරකින්න</button>
         </div>
 
         <!-- Add Transaction -->
@@ -200,6 +256,7 @@
     const db = firebase.database();
 
     let initialNoticeLoad = true;
+    let currentActiveMemberData = null;
 
     db.ref('admin/password').once('value', snapshot => {
         if (!snapshot.exists()) {
@@ -234,11 +291,13 @@
             document.getElementById('notice-target').innerHTML = noticeSelect;
             document.getElementById('delete-mem-select').innerHTML = memOptions;
             document.getElementById('del-tx-mem-select').innerHTML = memOptions;
+            document.getElementById('loan-mem-select').innerHTML = memOptions;
+            document.getElementById('loan-pay-mem-select').innerHTML = memOptions;
         });
     }
 
     function verifyAdminPassword(callback) {
-        const enteredPass = prompt("මෙම ක්‍රියාව සිදු කිරීමට ඇඩ්මින් මුරපදය (Admin Password) ඇතුළත් කරන්න:");
+        const enteredPass = prompt("මෙම ක්‍රියාව සිදු කිරීමට ඇඩ්මින් මුරපදය ඇතුළත් කරන්න:");
         if (!enteredPass) return;
 
         db.ref('admin/password').once('value', snapshot => {
@@ -276,6 +335,7 @@
     function listenToMemberData(id) {
         db.ref('members/' + id).on('value', snapshot => {
             const data = snapshot.val() || {};
+            currentActiveMemberData = data;
             const txs = data.transactions || {};
             let balance = parseFloat(data.openingBalance || 0);
             let rows = '';
@@ -298,7 +358,98 @@
             balDiv.innerText = `වත්මන් ශේෂය: රු. ${balance.toFixed(2)}`;
             balDiv.className = `balance-box ${balance >= 0 ? 'balance-pos' : 'balance-neg'}`;
             document.getElementById('member-tx-table').innerHTML = rows;
+
+            // LOAN AREA DISPLAY
+            renderMemberLoanSummary(data);
         });
+    }
+
+    function renderMemberLoanSummary(data) {
+        const loanArea = document.getElementById('loan-summary-area');
+        if (data.loan && data.loan.amount > 0) {
+            const loan = data.loan;
+            const pendingInterest = calculatePendingInterest(loan);
+
+            loanArea.innerHTML = `
+                <div class="balance-box loan-box-btn" onclick="openLoanModal()">
+                    <div>⚠️ ලබාගෙන ඇති ණය මුදල: රු. ${parseFloat(loan.amount).toFixed(2)}</div>
+                    <div style="font-size: 14px; margin-top:5px; font-weight: normal; color: #d9534f;">
+                        අද දින දක්වා ගෙවිය යුතු පොලිය: <b>රු. ${pendingInterest.toFixed(2)}</b> (තොරතුරු සඳහා මෙතන ක්ලික් කරන්න)
+                    </div>
+                </div>
+            `;
+        } else {
+            loanArea.innerHTML = '';
+        }
+    }
+
+    // --- INTEREST CALCULATION LOGIC ---
+    function calculatePendingInterest(loan) {
+        let lastDateStr = loan.issueDate;
+        
+        // අවසාන පොලී ගෙවීම් කළ දිනය සෙවීම
+        if (loan.payments) {
+            const payList = Object.values(loan.payments).sort((a,b) => new Date(b.date) - new Date(a.date));
+            if (payList.length > 0) {
+                lastDateStr = payList[0].date;
+            }
+        }
+
+        const lastDate = new Date(lastDateStr);
+        const today = new Date();
+        
+        // දින ගණන සෙවීම
+        const diffTime = Math.max(0, today - lastDate);
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+        // මාසික පොලිය මත පදනම්ව දිනපතා පොලිය ගණනය කිරීම
+        const monthlyRate = parseFloat(loan.rate) / 100;
+        const dailyRate = (monthlyRate * 12) / 365;
+        const interest = parseFloat(loan.amount) * dailyRate * diffDays;
+
+        return interest;
+    }
+
+    function openLoanModal() {
+        if (!currentActiveMemberData || !currentActiveMemberData.loan) return;
+        const loan = currentActiveMemberData.loan;
+        const pendingInterest = calculatePendingInterest(loan);
+
+        let lastPayDate = loan.issueDate;
+        let payRows = '';
+        
+        if (loan.payments) {
+            const payList = Object.values(loan.payments).sort((a,b) => new Date(b.date) - new Date(a.date));
+            if(payList.length > 0) lastPayDate = payList[0].date;
+
+            payList.forEach(p => {
+                payRows += `<tr>
+                    <td>${p.date}</td>
+                    <td>${p.desc || 'ණය / පොලී ගෙවීම'}</td>
+                    <td>රු. ${parseFloat(p.amount).toFixed(2)}</td>
+                </tr>`;
+            });
+        }
+
+        document.getElementById('loan-details-body').innerHTML = `
+            <table style="margin-bottom:15px;">
+                <tr><th>ණය මුදල</th><td><b>රු. ${parseFloat(loan.amount).toFixed(2)}</b></td></tr>
+                <tr><th>මාසික පොලී ප්‍රතිශතය</th><td>${loan.rate}%</td></tr>
+                <tr><th>ණය ලබාගත් දිනය</th><td>${loan.issueDate}</td></tr>
+                <tr><th>අවසාන පොලී ගෙවීම් දිනය</th><td>${lastPayDate}</td></tr>
+                <tr style="background:#fff3cd;">
+                    <th>අද දින දක්වා ඇති පොලිය</th>
+                    <td style="color:red; font-weight:bold;">රු. ${pendingInterest.toFixed(2)}</td>
+                </tr>
+            </table>
+        `;
+
+        document.getElementById('loan-history-table').innerHTML = payRows || '<tr><td colspan="3">තවමත් ගෙවීම් සිදුකර නොමැත.</td></tr>';
+        document.getElementById('loan-modal').classList.remove('hidden');
+    }
+
+    function closeLoanModal() {
+        document.getElementById('loan-modal').classList.add('hidden');
     }
 
     function listenToNotices(memId) {
@@ -443,6 +594,61 @@
         }
     }
 
+    // --- LOAN ADMIN ACTIONS ---
+    function submitLoan() {
+        const memId = document.getElementById('loan-mem-select').value;
+        const issueDate = document.getElementById('loan-date').value;
+        const amount = document.getElementById('loan-amount').value;
+        const rate = document.getElementById('loan-rate').value;
+
+        if (!memId || !issueDate || !amount || !rate) {
+            return alert('කරුණාකර ණය විස්තර සියල්ල සම්පූර්ණ කරන්න!');
+        }
+
+        const loanObj = {
+            issueDate,
+            amount: parseFloat(amount),
+            rate: parseFloat(rate)
+        };
+
+        db.ref(`members/${memId}/loan`).set(loanObj, err => {
+            if(!err) {
+                alert('ණය මුදල සාර්ථකව සටහන් කළා!');
+                document.getElementById('loan-amount').value = '';
+                document.getElementById('loan-rate').value = '';
+            } else {
+                alert('දෝෂයක් සිදු විය: ' + err.message);
+            }
+        });
+    }
+
+    function submitLoanPayment() {
+        const memId = document.getElementById('loan-pay-mem-select').value;
+        const date = document.getElementById('loan-pay-date').value;
+        const amount = document.getElementById('loan-pay-amount').value;
+        const desc = document.getElementById('loan-pay-desc').value.trim();
+
+        if (!memId || !date || !amount) {
+            return alert('කරුණාකර ගෙවීමේ විස්තර ඇතුළත් කරන්න!');
+        }
+
+        const payObj = {
+            date,
+            amount: parseFloat(amount),
+            desc: desc || 'ණය / පොලී ගෙවීම'
+        };
+
+        db.ref(`members/${memId}/loan/payments`).push(payObj, err => {
+            if(!err) {
+                alert('ගෙවීම සාර්ථකව සුරැකිණි!');
+                document.getElementById('loan-pay-amount').value = '';
+                document.getElementById('loan-pay-desc').value = '';
+            } else {
+                alert('දෝෂයක් සිදු විය: ' + err.message);
+            }
+        });
+    }
+
     function submitTransaction() {
         const target = document.getElementById('tx-target').value;
         const type = document.getElementById('tx-type').value;
@@ -468,7 +674,6 @@
         }
     }
 
-    // --- DELETE TRANSACTIONS LOGIC ---
     function loadMemberTransactionsForDelete() {
         const memId = document.getElementById('del-tx-mem-select').value;
         const container = document.getElementById('tx-delete-container');
@@ -522,18 +727,15 @@
                         const type = cb.getAttribute('data-type');
                         const amount = parseFloat(cb.getAttribute('data-amount'));
 
-                        // මුළු එකතුව නොවනස්ව තැබීමට openingBalance එකට එකතු/අඩු කිරීම
                         if (type === 'INCOME') {
                             currentOpeningBal += amount;
                         } else if (type === 'EXPENSE') {
                             currentOpeningBal -= amount;
                         }
 
-                        // ගනුදෙනුව Database එකෙන් මකා දැමීම
                         db.ref(`members/${memId}/transactions/${txKey}`).remove();
                     });
 
-                    // නව Opening Balance එක සුරැකීම
                     db.ref(`members/${memId}`).update({ openingBalance: currentOpeningBal }, () => {
                         alert('තෝරාගත් ගනුදෙනු සාර්ථකව ඉවත් කළා!');
                         loadMemberTransactionsForDelete();
