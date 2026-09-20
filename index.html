@@ -25,6 +25,8 @@
         .loan-box-btn { background: #fff3cd; color: #856404; border: 2px dashed var(--loan); cursor: pointer; transition: 0.3s; }
         .loan-box-btn:hover { background: #ffe8a1; }
 
+        .live-interest-info { background: #e2e3e5; color: #383d41; padding: 10px; border-radius: 5px; margin: 5px 0; font-weight: bold; border-left: 5px solid var(--loan); }
+
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
         th { background-color: #343a40; color: white; }
@@ -35,6 +37,10 @@
         .small-text { font-size: 11px; opacity: 0.85; font-weight: normal; }
         .flex-row { display: flex; align-items: center; gap: 10px; }
         .flex-row input[type="checkbox"] { width: auto; }
+
+        .tab-buttons { display: flex; gap: 10px; margin-bottom: 10px; }
+        .tab-buttons button { background: #6c757d; }
+        .tab-buttons button.active { background: #007bff; }
 
         /* Modal Popup Styles */
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
@@ -150,7 +156,7 @@
             <button onclick="submitLoan()" style="background: var(--loan);">ණය මුදල සටහන් කරන්න</button>
         </div>
 
-        <!-- Transaction Entry Card (Updated) -->
+        <!-- Transaction Entry Card -->
         <div class="card">
             <h4>ගනුදෙනුවක් ඇතුළත් කිරීම</h4>
             <label>සාමාජිකයා තෝරන්න:</label>
@@ -159,10 +165,13 @@
             </select>
             
             <label>ගනුදෙනු වර්ගය:</label>
-            <select id="tx-type">
+            <select id="tx-type" onchange="handleTxTypeChange()">
                 <option value="INCOME">මුදල් එකතු කිරීම (+ කොළ පාට)</option>
                 <option value="EXPENSE">දඩ/අයකිරීම (- රතු පාට)</option>
             </select>
+
+            <!-- Live Interest Info Box -->
+            <div id="live-interest-display" class="live-interest-info hidden"></div>
             
             <input type="date" id="tx-date">
             <input type="text" id="tx-desc" placeholder="විස්තරය (අනිවාර්යයි)">
@@ -170,23 +179,30 @@
             <button onclick="submitTransaction()">ගනුදෙනුව සුරකින්න</button>
         </div>
 
+        <!-- Transaction Delete Card -->
         <div class="card">
-            <h4>පැරණි ගනුදෙනු ලැයිස්තුවෙන් ඉවත් කිරීම</h4>
+            <h4>ගනුදෙනු ලැයිස්තුවෙන් ඉවත් කිරීම</h4>
             <label>සාමාජිකයා තෝරන්න:</label>
             <select id="del-tx-mem-select" onchange="loadMemberTransactionsForDelete()"></select>
             
             <div id="tx-delete-container" class="hidden">
+                <div class="tab-buttons">
+                    <button id="tab-btn-normal" class="active" onclick="switchDeleteTab('NORMAL')">සාමාන්‍ය ගනුදෙනු</button>
+                    <button id="tab-btn-loan" onclick="switchDeleteTab('LOAN')">ණය ගනුදෙනු / පොලී ගෙවීම්</button>
+                </div>
+
                 <div class="flex-row" style="margin: 10px 0;">
                     <input type="checkbox" id="select-all-tx" onchange="toggleSelectAllTx(this)">
                     <label for="select-all-tx"><b>සියලුම ගනුදෙනු තෝරන්න (Select All)</b></label>
                 </div>
+
                 <table>
                     <thead>
                         <tr>
                             <th>තෝරන්න</th>
                             <th>දිනය</th>
                             <th>විස්තරය</th>
-                            <th>මුදල</th>
+                            <th>මුදල (රු.)</th>
                         </tr>
                     </thead>
                     <tbody id="del-tx-table-body"></tbody>
@@ -239,6 +255,7 @@
 
     let initialNoticeLoad = true;
     let currentActiveMemberData = null;
+    let currentDeleteTab = 'NORMAL';
 
     db.ref('admin/password').once('value', snapshot => {
         if (!snapshot.exists()) {
@@ -284,11 +301,43 @@
         const existingInterestOpt = txTypeSelect.querySelector('option[value="LOAN_INTEREST"]');
         if (existingInterestOpt) existingInterestOpt.remove();
 
+        document.getElementById('live-interest-display').classList.add('hidden');
+
         if (target !== 'ALL') {
-            const interestOpt = document.createElement('option');
-            interestOpt.value = 'LOAN_INTEREST';
-            interestOpt.textContent = 'ණය පොලී ගෙවීම් ලබාගැනීම (+ ණයට එකතු වේ)';
-            txTypeSelect.appendChild(interestOpt);
+            db.ref(`members/${target}/loan`).once('value', snapshot => {
+                const loan = snapshot.val();
+                if (loan && parseFloat(loan.amount) > 0) {
+                    const interestOpt = document.createElement('option');
+                    interestOpt.value = 'LOAN_INTEREST';
+                    interestOpt.textContent = 'ණය පොලී ගෙවීම් ලබාගැනීම (+ ණයට එකතු වේ)';
+                    txTypeSelect.appendChild(interestOpt);
+                }
+            });
+        }
+    }
+
+    function handleTxTypeChange() {
+        const target = document.getElementById('tx-target').value;
+        const type = document.getElementById('tx-type').value;
+        const displayBox = document.getElementById('live-interest-display');
+
+        if (type === 'LOAN_INTEREST' && target !== 'ALL') {
+            db.ref(`members/${target}/loan`).once('value', snapshot => {
+                const loan = snapshot.val();
+                if (loan) {
+                    const pendingInterest = calculatePendingInterest(loan);
+                    let lastDateStr = loan.issueDate;
+                    if (loan.payments) {
+                        const payList = Object.values(loan.payments).sort((a,b) => new Date(b.date) - new Date(a.date));
+                        if (payList.length > 0) lastDateStr = payList[0].date;
+                    }
+
+                    displayBox.innerHTML = `📌 අවසන් ගෙවූ දිනය (${lastDateStr}) සිට අද දක්වා ගෙවිය යුතු පොලිය: <span style="color:red;">රු. ${pendingInterest.toFixed(2)}</span>`;
+                    displayBox.classList.remove('hidden');
+                }
+            });
+        } else {
+            displayBox.classList.add('hidden');
         }
     }
 
@@ -361,7 +410,7 @@
 
     function renderMemberLoanSummary(data) {
         const loanArea = document.getElementById('loan-summary-area');
-        if (data.loan && data.loan.amount > 0) {
+        if (data.loan && parseFloat(data.loan.amount) > 0) {
             const loan = data.loan;
             const pendingInterest = calculatePendingInterest(loan);
 
@@ -588,27 +637,37 @@
     function submitLoan() {
         const memId = document.getElementById('loan-mem-select').value;
         const issueDate = document.getElementById('loan-date').value;
-        const amount = document.getElementById('loan-amount').value;
-        const rate = document.getElementById('loan-rate').value;
+        const newAmount = parseFloat(document.getElementById('loan-amount').value || 0);
+        const rate = parseFloat(document.getElementById('loan-rate').value || 0);
 
-        if (!memId || !issueDate || !amount || !rate) {
-            return alert('කරුණාකර ණය විස්තර සියල්ල සම්පූර්ණ කරන්න!');
+        if (!memId || !issueDate || newAmount <= 0 || rate <= 0) {
+            return alert('කරුණාකර ණය විස්තර සියල්ල නිවැරදිව සම්පූර්ණ කරන්න!');
         }
 
-        const loanObj = {
-            issueDate,
-            amount: parseFloat(amount),
-            rate: parseFloat(rate)
-        };
+        db.ref(`members/${memId}/loan`).once('value', snapshot => {
+            const existingLoan = snapshot.val();
+            let finalAmount = newAmount;
 
-        db.ref(`members/${memId}/loan`).set(loanObj, err => {
-            if(!err) {
-                alert('ණය මුදල සාර්ථකව සටහන් කළා!');
-                document.getElementById('loan-amount').value = '';
-                document.getElementById('loan-rate').value = '';
-            } else {
-                alert('දෝෂයක් සිදු විය: ' + err.message);
+            if (existingLoan && parseFloat(existingLoan.amount) > 0) {
+                finalAmount += parseFloat(existingLoan.amount);
             }
+
+            const loanObj = {
+                issueDate,
+                amount: finalAmount,
+                rate: rate,
+                payments: (existingLoan && existingLoan.payments) ? existingLoan.payments : {}
+            };
+
+            db.ref(`members/${memId}/loan`).set(loanObj, err => {
+                if(!err) {
+                    alert(`ණය මුදල සාර්ථකව සටහන් කළා! (නව මුළු ණය මුදල: රු. ${finalAmount.toFixed(2)})`);
+                    document.getElementById('loan-amount').value = '';
+                    document.getElementById('loan-rate').value = '';
+                } else {
+                    alert('දෝෂයක් සිදු විය: ' + err.message);
+                }
+            });
         });
     }
 
@@ -633,6 +692,7 @@
                     alert('ණය පොලී ගෙවීම සාර්ථකව ණය ගිණුමට එකතු කළා!');
                     document.getElementById('tx-desc').value = '';
                     document.getElementById('tx-amount').value = '';
+                    document.getElementById('live-interest-display').classList.add('hidden');
                 } else {
                     alert('දෝෂයක් සිදු විය: ' + err.message);
                 }
@@ -655,6 +715,13 @@
         }
     }
 
+    function switchDeleteTab(tab) {
+        currentDeleteTab = tab;
+        document.getElementById('tab-btn-normal').className = tab === 'NORMAL' ? 'active' : '';
+        document.getElementById('tab-btn-loan').className = tab === 'LOAN' ? 'active' : '';
+        loadMemberTransactionsForDelete();
+    }
+
     function loadMemberTransactionsForDelete() {
         const memId = document.getElementById('del-tx-mem-select').value;
         const container = document.getElementById('tx-delete-container');
@@ -664,24 +731,45 @@
             return;
         }
 
-        db.ref(`members/${memId}/transactions`).once('value', snapshot => {
-            const txs = snapshot.val() || {};
-            let rows = '';
+        container.classList.remove('hidden');
 
-            for (let txKey in txs) {
-                const t = txs[txKey];
-                rows += `<tr>
-                    <td><input type="checkbox" class="tx-checkbox" value="${txKey}" data-type="${t.type}" data-amount="${t.amount}"></td>
-                    <td>${t.date}</td>
-                    <td>${t.desc}</td>
-                    <td>${t.type === 'INCOME' ? '+' : '-'}${t.amount}</td>
-                </tr>`;
-            }
+        if (currentDeleteTab === 'NORMAL') {
+            db.ref(`members/${memId}/transactions`).once('value', snapshot => {
+                const txs = snapshot.val() || {};
+                let rows = '';
 
-            document.getElementById('del-tx-table-body').innerHTML = rows || '<tr><td colspan="4">ගනුදෙනු නොමැත.</td></tr>';
-            document.getElementById('select-all-tx').checked = false;
-            container.classList.remove('hidden');
-        });
+                for (let txKey in txs) {
+                    const t = txs[txKey];
+                    rows += `<tr>
+                        <td><input type="checkbox" class="tx-checkbox" value="${txKey}" data-type="${t.type}" data-amount="${t.amount}"></td>
+                        <td>${t.date}</td>
+                        <td>${t.desc}</td>
+                        <td>${t.type === 'INCOME' ? '+' : '-'}${t.amount}</td>
+                    </tr>`;
+                }
+
+                document.getElementById('del-tx-table-body').innerHTML = rows || '<tr><td colspan="4">සාමාන්‍ය ගනුදෙනු නොමැත.</td></tr>';
+                document.getElementById('select-all-tx').checked = false;
+            });
+        } else {
+            db.ref(`members/${memId}/loan/payments`).once('value', snapshot => {
+                const pays = snapshot.val() || {};
+                let rows = '';
+
+                for (let payKey in pays) {
+                    const p = pays[payKey];
+                    rows += `<tr>
+                        <td><input type="checkbox" class="tx-checkbox" value="${payKey}"></td>
+                        <td>${p.date}</td>
+                        <td>${p.desc || 'ණය / පොලී ගෙවීම'}</td>
+                        <td>රු. ${parseFloat(p.amount).toFixed(2)}</td>
+                    </tr>`;
+                }
+
+                document.getElementById('del-tx-table-body').innerHTML = rows || '<tr><td colspan="4">ණය ගෙවීම් / පොලී වාර්තා නොමැත.</td></tr>';
+                document.getElementById('select-all-tx').checked = false;
+            });
+        }
     }
 
     function toggleSelectAllTx(master) {
@@ -697,31 +785,46 @@
             return alert('කරුණාකර ඉවත් කිරීම සඳහා අවම වශයෙන් එක් ගනුදෙනුවක්වත් තෝරන්න!');
         }
 
-        if (confirm(`තෝරාගත් ගනුදෙනු ${selectedCbs.length} මකා දැමීමට ඔබට විශ්වාසද? (මුළු ශේෂය නොවෙනස්ව පවතිනු ඇත)`)) {
+        const count = selectedCbs.length;
+        const msg = currentDeleteTab === 'NORMAL' 
+            ? `තෝරාගත් සාමාන්‍ය ගනුදෙනු ${count} මකා දැමීමට ඔබට විශ්වාසද?`
+            : `තෝරාගත් ණය ගෙවීම්/පොලී වාර්තා ${count} මකා දැමීමට ඔබට විශ්වාසද?`;
+
+        if (confirm(msg)) {
             verifyAdminPassword(() => {
-                db.ref(`members/${memId}`).once('value', snapshot => {
-                    const memData = snapshot.val() || {};
-                    let currentOpeningBal = parseFloat(memData.openingBalance || 0);
+                if (currentDeleteTab === 'NORMAL') {
+                    db.ref(`members/${memId}`).once('value', snapshot => {
+                        const memData = snapshot.val() || {};
+                        let currentOpeningBal = parseFloat(memData.openingBalance || 0);
 
+                        selectedCbs.forEach(cb => {
+                            const txKey = cb.value;
+                            const type = cb.getAttribute('data-type');
+                            const amount = parseFloat(cb.getAttribute('data-amount'));
+
+                            if (type === 'INCOME') {
+                                currentOpeningBal += amount;
+                            } else if (type === 'EXPENSE') {
+                                currentOpeningBal -= amount;
+                            }
+
+                            db.ref(`members/${memId}/transactions/${txKey}`).remove();
+                        });
+
+                        db.ref(`members/${memId}`).update({ openingBalance: currentOpeningBal }, () => {
+                            alert('තෝරාගත් සාමාන්‍ය ගනුදෙනු සාර්ථකව ඉවත් කළා!');
+                            loadMemberTransactionsForDelete();
+                        });
+                    });
+                } else {
                     selectedCbs.forEach(cb => {
-                        const txKey = cb.value;
-                        const type = cb.getAttribute('data-type');
-                        const amount = parseFloat(cb.getAttribute('data-amount'));
-
-                        if (type === 'INCOME') {
-                            currentOpeningBal += amount;
-                        } else if (type === 'EXPENSE') {
-                            currentOpeningBal -= amount;
-                        }
-
-                        db.ref(`members/${memId}/transactions/${txKey}`).remove();
+                        const payKey = cb.value;
+                        db.ref(`members/${memId}/loan/payments/${payKey}`).remove();
                     });
 
-                    db.ref(`members/${memId}`).update({ openingBalance: currentOpeningBal }, () => {
-                        alert('තෝරාගත් ගනුදෙනු සාර්ථකව ඉවත් කළා!');
-                        loadMemberTransactionsForDelete();
-                    });
-                });
+                    alert('තෝරාගත් ණය/පොලී ගෙවීම් වාර්තා සාර්ථකව ඉවත් කළා!');
+                    loadMemberTransactionsForDelete();
+                }
             });
         }
     }
@@ -759,3 +862,4 @@
 
 </body>
 </html>
+
