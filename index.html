@@ -1,11 +1,9 @@
-Modal එක ස්වයංක්‍රීයව විවෘත වීම වළක්වමින් සකස් කරන ලද නිවැරදි HTML කෝඩ් එක පහත දැක්වේ.
-මෙහිදී Modal එක ආරම්භයේදීම සැඟවී පැවතීමට hidden CSS class එක සහ ස්ක්‍රිප්ට් එක නිවැරදි කර ඇත.
 <!DOCTYPE html>
 <html lang="si">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>සමිතියේ ගිණුම් පද්ධතිය</title>
+    <title>සමිතියේ ගිණුම් කළමනාකරණය</title>
     <style>
         :root { --danger: #dc3545; --success: #28a745; --warning: #ffc107; --info: #17a2b8; --loan: #fd7e14; }
         body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f7f6; margin: 0; padding: 15px; }
@@ -93,7 +91,7 @@ Modal එක ස්වයංක්‍රීයව විවෘත වීම ව�
         <button onclick="logoutMember()" style="margin-top:20px; background:#6c757d;">ලොග් අවුට් වන්න</button>
     </div>
 
-    <!-- Loan Details Popup Modal ( hidden class එක මඟින් ආරම්භයේදී සැඟවී පවතී ) -->
+    <!-- Loan Details Popup Modal -->
     <div id="loan-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h2 style="color: var(--loan);">ණය ගිණුම් විස්තර</h2>
@@ -152,27 +150,20 @@ Modal එක ස්වයංක්‍රීයව විවෘත වීම ව�
             <button onclick="submitLoan()" style="background: var(--loan);">ණය මුදල සටහන් කරන්න</button>
         </div>
 
-        <div class="card" style="border: 1px solid var(--success);">
-            <h4 style="color: var(--success);">ණය / පොලී ගෙවීම් ලබාගැනීම</h4>
-            <label>සාමාජිකයා තෝරන්න:</label>
-            <select id="loan-pay-mem-select"></select>
-            <input type="date" id="loan-pay-date">
-            <input type="number" id="loan-pay-amount" placeholder="ගෙවූ මුදල (රු.)">
-            <input type="text" id="loan-pay-desc" placeholder="විස්තරය (උදා: පෙබරවාරි මාසයේ පොලිය)">
-            <button onclick="submitLoanPayment()" style="background: var(--success);">ගෙවීම සුරකින්න</button>
-        </div>
-
+        <!-- Transaction Entry Card (Updated) -->
         <div class="card">
             <h4>ගනුදෙනුවක් ඇතුළත් කිරීම</h4>
             <label>සාමාජිකයා තෝරන්න:</label>
-            <select id="tx-target">
+            <select id="tx-target" onchange="handleTxTargetChange()">
                 <option value="ALL">සියලුම සාමාජිකයන්ට (Bulk)</option>
             </select>
+            
             <label>ගනුදෙනු වර්ගය:</label>
             <select id="tx-type">
                 <option value="INCOME">මුදල් එකතු කිරීම (+ කොළ පාට)</option>
                 <option value="EXPENSE">දඩ/අයකිරීම (- රතු පාට)</option>
             </select>
+            
             <input type="date" id="tx-date">
             <input type="text" id="tx-desc" placeholder="විස්තරය (අනිවාර්යයි)">
             <input type="number" id="tx-amount" placeholder="මුදල (රු.)">
@@ -283,8 +274,22 @@ Modal එක ස්වයංක්‍රීයව විවෘත වීම ව�
             document.getElementById('delete-mem-select').innerHTML = memOptions;
             document.getElementById('del-tx-mem-select').innerHTML = memOptions;
             document.getElementById('loan-mem-select').innerHTML = memOptions;
-            document.getElementById('loan-pay-mem-select').innerHTML = memOptions;
         });
+    }
+
+    function handleTxTargetChange() {
+        const target = document.getElementById('tx-target').value;
+        const txTypeSelect = document.getElementById('tx-type');
+        
+        const existingInterestOpt = txTypeSelect.querySelector('option[value="LOAN_INTEREST"]');
+        if (existingInterestOpt) existingInterestOpt.remove();
+
+        if (target !== 'ALL') {
+            const interestOpt = document.createElement('option');
+            interestOpt.value = 'LOAN_INTEREST';
+            interestOpt.textContent = 'ණය පොලී ගෙවීම් ලබාගැනීම (+ ණයට එකතු වේ)';
+            txTypeSelect.appendChild(interestOpt);
+        }
     }
 
     function verifyAdminPassword(callback) {
@@ -607,33 +612,6 @@ Modal එක ස්වයංක්‍රීයව විවෘත වීම ව�
         });
     }
 
-    function submitLoanPayment() {
-        const memId = document.getElementById('loan-pay-mem-select').value;
-        const date = document.getElementById('loan-pay-date').value;
-        const amount = document.getElementById('loan-pay-amount').value;
-        const desc = document.getElementById('loan-pay-desc').value.trim();
-
-        if (!memId || !date || !amount) {
-            return alert('කරුණාකර ගෙවීමේ විස්තර ඇතුළත් කරන්න!');
-        }
-
-        const payObj = {
-            date,
-            amount: parseFloat(amount),
-            desc: desc || 'ණය / පොලී ගෙවීම'
-        };
-
-        db.ref(`members/${memId}/loan/payments`).push(payObj, err => {
-            if(!err) {
-                alert('ගෙවීම සාර්ථකව සුරැකිණි!');
-                document.getElementById('loan-pay-amount').value = '';
-                document.getElementById('loan-pay-desc').value = '';
-            } else {
-                alert('දෝෂයක් සිදු විය: ' + err.message);
-            }
-        });
-    }
-
     function submitTransaction() {
         const target = document.getElementById('tx-target').value;
         const type = document.getElementById('tx-type').value;
@@ -643,19 +621,37 @@ Modal එක ස්වයංක්‍රීයව විවෘත වීම ව�
 
         if (!date || !desc || !amount) return alert('සියලුම විස්තර නිවැරදිව පුරවන්න!');
 
-        const txData = { type, date, desc, amount: parseFloat(amount) };
+        if (type === 'LOAN_INTEREST') {
+            const payObj = {
+                date,
+                amount: parseFloat(amount),
+                desc: desc || 'ණය / පොලී ගෙවීම'
+            };
 
-        if (target === 'ALL') {
-            db.ref('members').once('value', snapshot => {
-                const members = snapshot.val() || {};
-                for (let mId in members) {
-                    db.ref(`members/${mId}/transactions`).push(txData);
+            db.ref(`members/${target}/loan/payments`).push(payObj, err => {
+                if(!err) {
+                    alert('ණය පොලී ගෙවීම සාර්ථකව ණය ගිණුමට එකතු කළා!');
+                    document.getElementById('tx-desc').value = '';
+                    document.getElementById('tx-amount').value = '';
+                } else {
+                    alert('දෝෂයක් සිදු විය: ' + err.message);
                 }
-                alert('සියලුම සාමාජිකයින්ට ගනුදෙනුව එකතු කළා!');
             });
         } else {
-            db.ref(`members/${target}/transactions`).push(txData);
-            alert('ගනුදෙනුව සුරැකිණි!');
+            const txData = { type, date, desc, amount: parseFloat(amount) };
+
+            if (target === 'ALL') {
+                db.ref('members').once('value', snapshot => {
+                    const members = snapshot.val() || {};
+                    for (let mId in members) {
+                        db.ref(`members/${mId}/transactions`).push(txData);
+                    }
+                    alert('සියලුම සාමාජිකයින්ට ගනුදෙනුව එකතු කළා!');
+                });
+            } else {
+                db.ref(`members/${target}/transactions`).push(txData);
+                alert('ගනුදෙනුව සුරැකිණි!');
+            }
         }
     }
 
@@ -763,4 +759,3 @@ Modal එක ස්වයංක්‍රීයව විවෘත වීම ව�
 
 </body>
 </html>
-
