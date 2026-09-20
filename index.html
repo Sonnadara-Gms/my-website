@@ -131,13 +131,19 @@
     // --- FIREBASE CONFIGURATION ---
     // මෙතැනට ඔබේ Firebase Console එකෙන් ලබාගත් Config විස්තර ලබා දෙන්න:
     const firebaseConfig = {
-        apiKey: "YOUR_API_KEY",
-        authDomain: "YOUR_PROJECT.firebaseapp.com",
-        databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-        projectId: "YOUR_PROJECT",
-        storageBucket: "YOUR_PROJECT.appspot.com",
-        messagingSenderId: "YOUR_SENDER_ID",
-        appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyATaUAOYjNXW2Q-LN2yrxEnx44lrBUfgzM",
+  authDomain: "monny-9064c.firebaseapp.com",
+  databaseURL: "https://monny-9064c-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "monny-9064c",
+  storageBucket: "monny-9064c.firebasestorage.app",
+  messagingSenderId: "601469526246",
+  appId: "1:601469526246:web:23a31393af340068725b27",
+  measurementId: "G-YGWHNMMF2D"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
     };
 
     firebase.initializeApp(firebaseConfig);
