@@ -1,26 +1,293 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="si">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Cloudflare Website</title>
-    <link rel="stylesheet" href="style.css">
+    <title>සමිතියේ ගිණුම් පද්ධතිය</title>
+    <style>
+        :root { --danger: #dc3545; --success: #28a745; --warning: #ffc107; --info: #17a2b8; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f7f6; margin: 0; padding: 15px; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h1, h2, h3, h4 { text-align: center; color: #333; }
+        .card { background: #eef2f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        input, select, button { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 14px; }
+        button { background: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; }
+        button:hover { opacity: 0.9; }
+        .notice-box { padding: 12px; border-radius: 6px; margin: 10px 0; color: white; font-weight: bold; }
+        .bg-danger { background-color: var(--danger); }
+        .bg-warning { background-color: var(--warning); color: #000; }
+        .bg-success { background-color: var(--success); }
+        .bg-info { background-color: var(--info); }
+        .balance-box { font-size: 22px; text-align: center; font-weight: bold; padding: 15px; border-radius: 8px; margin: 15px 0; }
+        .balance-pos { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .balance-neg { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 14px; }
+        th { background-color: #343a40; color: white; }
+        tr.income { background-color: #e6f4ea; color: #137333; font-weight: bold; }
+        tr.expense { background-color: #fce8e6; color: #c5221f; font-weight: bold; }
+        .hidden { display: none; }
+    </style>
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
 <body>
-    <header>
-        <h1>Welcome to My Website!</h1>
-        <p>Hosted smoothly using Cloudflare Pages.</p>
-    </header>
 
-    <main>
-        <section class="card">
-            <h2>About This Site</h2>
-            <p>මෙය මගේ පලමු 1 හුට්ටො Cloudflare Pages හරහා සාදපු මගේ පළමු වෙබ් අඩවියයි.</p>
-        </section>
-    </main>
+<div class="container">
+    <h1>සමිතියේ ගිණුම් කළමනාකරණය</h1>
 
-    <footer>
-        <p>&copy; 2026 My Website. All rights reserved.</p>
-    </footer>
+    <!-- Member Login Section -->
+    <div id="member-login-sec" class="card">
+        <h3>සාමාජික ගිණුම බලන්න</h3>
+        <input type="text" id="member-id-input" placeholder="සාමාජික අංකය ඇතුළත් කරන්න (උදා: M001)">
+        <button onclick="viewMemberAccount()">ගිණුම පරීක්ෂා කරන්න</button>
+        <button onclick="toggleAdminLogin()" style="background:#6c757d;">සභාපති / ඇඩ්මින් ප්‍රවේශය</button>
+    </div>
+
+    <!-- Admin Login Modal -->
+    <div id="admin-login-sec" class="card hidden">
+        <h3>ඇඩ්මින් ප්‍රවේශය</h3>
+        <input type="password" id="admin-pass-input" placeholder="ඇඩ්මින් මුරපදය">
+        <button onclick="adminLogin()">Login</button>
+        <button onclick="toggleAdminLogin()" style="background:#dc3545;">අවලංගු කරන්න</button>
+    </div>
+
+    <!-- Announcements Display -->
+    <div id="announcements-area"></div>
+
+    <!-- Member View Section -->
+    <div id="member-view-sec" class="hidden">
+        <h2 id="disp-member-id">සාමාජික අංකය: </h2>
+        <div id="disp-balance" class="balance-box">ශේෂය: රු. 0.00</div>
+        
+        <h3>ගනුදෙනු විස්තර</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>දිනය</th>
+                    <th>විස්තරය</th>
+                    <th>මුදල (රු.)</th>
+                </tr>
+            </thead>
+            <tbody id="member-tx-table"></tbody>
+        </table>
+        <button onclick="logoutMember()" style="margin-top:20px; background:#6c757d;">ලොග් අවුට් වන්න</button>
+    </div>
+
+    <!-- Admin Panel Section -->
+    <div id="admin-panel-sec" class="hidden">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <h2>ඇඩ්මින් පාලන පුවරුව</h2>
+            <button onclick="adminLogout()" style="width:auto; background:#dc3545; padding: 8px 15px;">Logout</button>
+        </div>
+
+        <!-- Add Member -->
+        <div class="card">
+            <h4>නව සාමාජිකයෙකු එකතු කිරීම</h4>
+            <input type="text" id="new-mem-id" placeholder="සාමාජික අංකය (උදා: M001)">
+            <button onclick="addMember()">සාමාජිකයා එකතු කරන්න</button>
+        </div>
+
+        <!-- Add Transaction -->
+        <div class="card">
+            <h4>ගනුදෙනුවක් ඇතුළත් කිරීම</h4>
+            <label>සාමාජිකයා තෝරන්න:</label>
+            <select id="tx-target">
+                <option value="ALL">සියලුම සාමාජිකයන්ට (Bulk)</option>
+            </select>
+            <label>ගනුදෙනු වර්ගය:</label>
+            <select id="tx-type">
+                <option value="INCOME">මුදල් එකතු කිරීම (+ කොළ පාට)</option>
+                <option value="EXPENSE">දඩ/අයකිරීම (- රතු පාට)</option>
+            </select>
+            <input type="date" id="tx-date">
+            <input type="text" id="tx-desc" placeholder="විස්තරය (අනිවාර්යයි)">
+            <input type="number" id="tx-amount" placeholder="මුදල (රු.)">
+            <button onclick="submitTransaction()">ගනුදෙනුව සුරකින්න</button>
+        </div>
+
+        <!-- Add Announcement -->
+        <div class="card">
+            <h4>නිවේදනයක් පළ කිරීම</h4>
+            <label>අදාළ සාමාජිකයා:</label>
+            <select id="notice-target">
+                <option value="ALL">සියලු සාමාජිකයන්ට</option>
+            </select>
+            <label>නිවේදන වර්ණය:</label>
+            <select id="notice-color">
+                <option value="bg-danger">රතු (අනතුරු ඇඟවීම්/දඩ)</option>
+                <option value="bg-warning">කහ (මතක් කිරීම්)</option>
+                <option value="bg-success">කොළ (සුබ පැතුම්)</option>
+                <option value="bg-info">නිල් (සාමාන්‍ය)</option>
+            </select>
+            <input type="text" id="notice-msg" placeholder="නිවේදනයේ විස්තරය">
+            <button onclick="submitNotice()">නිවේදනය යවන්න</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- FIREBASE CONFIGURATION ---
+    // මෙතැනට ඔබේ Firebase Console එකෙන් ලබාගත් Config විස්තර ලබා දෙන්න:
+    const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT.firebaseapp.com",
+        databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+        projectId: "YOUR_PROJECT",
+        storageBucket: "YOUR_PROJECT.appspot.com",
+        messagingSenderId: "YOUR_SENDER_ID",
+        appId: "YOUR_APP_ID"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const ADMIN_PASS = "admin123"; // ඔබ කැමති ඇඩ්මින් මුරපදය මෙතැනට යොදන්න
+
+    function loadAdminDropdowns() {
+        db.ref('members').once('value', snapshot => {
+            const members = snapshot.val() || {};
+            let txSelect = '<option value="ALL">සියලුම සාමාජිකයන්ට (Bulk)</option>';
+            let noticeSelect = '<option value="ALL">සියලු සාමාජිකයන්ට</option>';
+            
+            for (let id in members) {
+                txSelect += `<option value="${id}">${id}</option>`;
+                noticeSelect += `<option value="${id}">${id}</option>`;
+            }
+            document.getElementById('tx-target').innerHTML = txSelect;
+            document.getElementById('notice-target').innerHTML = noticeSelect;
+        });
+    }
+
+    function viewMemberAccount() {
+        const id = document.getElementById('member-id-input').value.trim();
+        if (!id) return alert('කරුණාකර සාමාජික අංකය ඇතුළත් කරන්න');
+
+        db.ref('members/' + id).once('value', snapshot => {
+            if (!snapshot.exists()) {
+                return alert('එවැනි සාමාජික අංකයක් හමුවූයේ නැත.');
+            }
+            document.getElementById('member-login-sec').classList.add('hidden');
+            document.getElementById('member-view-sec').classList.remove('hidden');
+            document.getElementById('disp-member-id').innerText = 'සාමාජික අංකය: ' + id;
+            
+            listenToMemberData(id);
+            listenToNotices(id);
+        });
+    }
+
+    function listenToMemberData(id) {
+        db.ref('members/' + id).on('value', snapshot => {
+            const data = snapshot.val() || {};
+            const txs = data.transactions || {};
+            let balance = 0;
+            let rows = '';
+
+            const txList = Object.values(txs).sort((a,b) => new Date(b.date) - new Date(a.date));
+
+            txList.forEach(t => {
+                const amt = parseFloat(t.amount);
+                const isInc = t.type === 'INCOME';
+                balance += isInc ? amt : -amt;
+                
+                rows += `<tr class="${isInc ? 'income' : 'expense'}">
+                    <td>${t.date}</td>
+                    <td>${t.desc}</td>
+                    <td>${isInc ? '+' : '-'}${amt.toFixed(2)}</td>
+                </tr>`;
+            });
+
+            const balDiv = document.getElementById('disp-balance');
+            balDiv.innerText = `වත්මන් ශේෂය: රු. ${balance.toFixed(2)}`;
+            balDiv.className = `balance-box ${balance >= 0 ? 'balance-pos' : 'balance-neg'}`;
+            document.getElementById('member-tx-table').innerHTML = rows;
+        });
+    }
+
+    function listenToNotices(memId) {
+        db.ref('notices').on('value', snapshot => {
+            const notices = snapshot.val() || {};
+            let html = '';
+            for (let k in notices) {
+                const n = notices[k];
+                if (n.target === 'ALL' || n.target === memId) {
+                    html += `<div class="notice-box ${n.color}">${n.msg}</div>`;
+                }
+            }
+            document.getElementById('announcements-area').innerHTML = html;
+        });
+    }
+
+    function toggleAdminLogin() {
+        document.getElementById('admin-login-sec').classList.toggle('hidden');
+    }
+
+    function adminLogin() {
+        if (document.getElementById('admin-pass-input').value === ADMIN_PASS) {
+            document.getElementById('member-login-sec').classList.add('hidden');
+            document.getElementById('admin-login-sec').classList.add('hidden');
+            document.getElementById('admin-panel-sec').classList.remove('hidden');
+            loadAdminDropdowns();
+        } else {
+            alert('මුරපදය වැරදියි!');
+        }
+    }
+
+    function addMember() {
+        const id = document.getElementById('new-mem-id').value.trim();
+        if (!id) return alert('අංකයක් ඇතුළත් කරන්න');
+        
+        db.ref('members/' + id).set({ created: Date.now() }, err => {
+            if(!err) {
+                alert('සාමාජිකයා සාර්ථකව ඇතුළත් කළා');
+                document.getElementById('new-mem-id').value = '';
+                loadAdminDropdowns();
+            }
+        });
+    }
+
+    function submitTransaction() {
+        const target = document.getElementById('tx-target').value;
+        const type = document.getElementById('tx-type').value;
+        const date = document.getElementById('tx-date').value;
+        const desc = document.getElementById('tx-desc').value.trim();
+        const amount = document.getElementById('tx-amount').value;
+
+        if (!date || !desc || !amount) return alert('සියලුම විස්තර නිවැරදිව පුරවන්න!');
+
+        const txData = { type, date, desc, amount: parseFloat(amount) };
+
+        if (target === 'ALL') {
+            db.ref('members').once('value', snapshot => {
+                const members = snapshot.val() || {};
+                for (let mId in members) {
+                    db.ref(`members/${mId}/transactions`).push(txData);
+                }
+                alert('සියලුම සාමාජිකයින්ට ගනුදෙනුව එකතු කළා!');
+            });
+        } else {
+            db.ref(`members/${target}/transactions`).push(txData);
+            alert('ගනුදෙනුව සුරැකිණි!');
+        }
+    }
+
+    function submitNotice() {
+        const target = document.getElementById('notice-target').value;
+        const color = document.getElementById('notice-color').value;
+        const msg = document.getElementById('notice-msg').value.trim();
+
+        if (!msg) return alert('පණිවුඩය ඇතුළත් කරන්න');
+
+        db.ref('notices').push({ target, color, msg, date: Date.now() }, () => {
+            alert('නිවේදනය පළ කළා!');
+            document.getElementById('notice-msg').value = '';
+        });
+    }
+
+    function logoutMember() { location.reload(); }
+    function adminLogout() { location.reload(); }
+</script>
+
 </body>
 </html>
