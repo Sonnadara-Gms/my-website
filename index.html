@@ -13,7 +13,7 @@
         input, select, button { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; font-size: 14px; }
         button { background: #007bff; color: white; border: none; font-weight: bold; cursor: pointer; border-radius: 5px; }
         button:hover { opacity: 0.9; }
-        .notice-box { padding: 12px; border-radius: 6px; margin: 10px 0; color: white; font-weight: bold; }
+        .notice-box { padding: 12px; border-radius: 6px; margin: 10px 0; color: white; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
         .bg-danger { background-color: var(--danger); }
         .bg-warning { background-color: var(--warning); color: #000; }
         .bg-success { background-color: var(--success); }
@@ -27,6 +27,8 @@
         tr.income { background-color: #e6f4ea; color: #137333; font-weight: bold; }
         tr.expense { background-color: #fce8e6; color: #c5221f; font-weight: bold; }
         .hidden { display: none; }
+        .del-btn { background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; width: auto; margin: 0; }
+        .small-text { font-size: 11px; opacity: 0.85; font-weight: normal; }
     </style>
     <!-- Firebase SDKs (v8) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -82,6 +84,13 @@
             <button onclick="adminLogout()" style="width:auto; background:#dc3545; padding: 8px 15px;">Logout</button>
         </div>
 
+        <!-- Change Password Card -->
+        <div class="card" style="border: 1px dashed #6c757d;">
+            <h4>ඇඩ්මින් මුරපදය වෙනස් කිරීම</h4>
+            <input type="password" id="new-admin-pass" placeholder="නව ඇඩ්මින් මුරපදය">
+            <button onclick="changeAdminPassword()" style="background: #28a745;">මුරපදය සුරකින්න</button>
+        </div>
+
         <!-- Add Member -->
         <div class="card">
             <h4>නව සාමාජිකයෙකු එකතු කිරීම</h4>
@@ -122,7 +131,16 @@
                 <option value="bg-info">නිල් (සාමාන්‍ය)</option>
             </select>
             <input type="text" id="notice-msg" placeholder="නිවේදනයේ විස්තරය">
+            
+            <label>අහෝසි වන දිනය සහ වේලාව (අවශ්‍ය නම් පමණක් පුරවන්න):</label>
+            <input type="datetime-local" id="notice-expiry">
             <button onclick="submitNotice()">නිවේදනය යවන්න</button>
+        </div>
+
+        <!-- Manage Announcements -->
+        <div class="card">
+            <h4>පළ කළ නිවේදන කළමනාකරණය</h4>
+            <div id="admin-notices-list"></div>
         </div>
     </div>
 </div>
@@ -144,7 +162,12 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const ADMIN_PASS = "admin123";
+    // Default Password එක Database එකේ නැත්නම් Set කිරීම
+    db.ref('admin/password').once('value', snapshot => {
+        if (!snapshot.exists()) {
+            db.ref('admin/password').set('admin123');
+        }
+    });
 
     function loadAdminDropdowns() {
         db.ref('members').once('value', snapshot => {
@@ -210,14 +233,56 @@
         db.ref('notices').on('value', snapshot => {
             const notices = snapshot.val() || {};
             let html = '';
+            const now = Date.now();
+
             for (let k in notices) {
                 const n = notices[k];
+                // කල් ඉකුත් වීමේ වේලාව පරීක්ෂා කිරීම
+                if (n.expiryTime && now > n.expiryTime) {
+                    continue; // කල් ඉකුත් වී ඇත්නම් සාමාජිකයාට පෙන්වන්නේ නැත
+                }
+
                 if (n.target === 'ALL' || n.target === memId) {
-                    html += `<div class="notice-box ${n.color}">${n.msg}</div>`;
+                    html += `<div class="notice-box ${n.color}"><span>${n.msg}</span></div>`;
                 }
             }
             document.getElementById('announcements-area').innerHTML = html;
         });
+    }
+
+    function loadAdminNotices() {
+        db.ref('notices').on('value', snapshot => {
+            const notices = snapshot.val() || {};
+            let html = '';
+            const now = Date.now();
+
+            for (let k in notices) {
+                const n = notices[k];
+                const isExpired = n.expiryTime && now > n.expiryTime;
+                
+                let expiryStr = 'සදාකාලිකයි';
+                if (n.expiryTime) {
+                    expiryStr = new Date(n.expiryTime).toLocaleString('si-LK');
+                }
+
+                html += `<div class="notice-box ${n.color}" style="${isExpired ? 'opacity:0.5;' : ''}">
+                    <div>
+                        <div>[${n.target}] ${n.msg} ${isExpired ? '<b style="color:yellow;">(කල් ඉකුත් වී ඇත)</b>' : ''}</div>
+                        <div class="small-text">අහෝසි වන වේලාව: ${expiryStr}</div>
+                    </div>
+                    <button class="del-btn" onclick="deleteNotice('${k}')">මකන්න</button>
+                </div>`;
+            }
+            document.getElementById('admin-notices-list').innerHTML = html || '<p>පළ කළ නිවේදන නොමැත.</p>';
+        });
+    }
+
+    function deleteNotice(key) {
+        if (confirm('මෙම නිවේදනය මකා දැමීමට ඔබට විශ්වාසද?')) {
+            db.ref('notices/' + key).remove()
+                .then(() => alert('නිවේදනය සාර්ථකව මකා දැමුවා!'))
+                .catch(err => alert('දෝෂයක් සිදු විය: ' + err.message));
+        }
     }
 
     function toggleAdminLogin() {
@@ -225,13 +290,34 @@
     }
 
     function adminLogin() {
-        if (document.getElementById('admin-pass-input').value === ADMIN_PASS) {
-            document.getElementById('member-login-sec').classList.add('hidden');
-            document.getElementById('admin-login-sec').classList.add('hidden');
-            document.getElementById('admin-panel-sec').classList.remove('hidden');
-            loadAdminDropdowns();
-        } else {
-            alert('මුරපදය වැරදියි!');
+        const enteredPass = document.getElementById('admin-pass-input').value;
+        
+        db.ref('admin/password').once('value', snapshot => {
+            const currentPass = snapshot.val() || 'admin123';
+            
+            if (enteredPass === currentPass) {
+                document.getElementById('member-login-sec').classList.add('hidden');
+                document.getElementById('admin-login-sec').classList.add('hidden');
+                document.getElementById('admin-panel-sec').classList.remove('hidden');
+                loadAdminDropdowns();
+                loadAdminNotices();
+            } else {
+                alert('මුරපදය වැරදියි!');
+            }
+        });
+    }
+
+    function changeAdminPassword() {
+        const newPass = document.getElementById('new-admin-pass').value.trim();
+        if (!newPass) return alert('කරුණාකර නව මුරපදයක් ඇතුළත් කරන්න');
+
+        if (confirm('ඇඩ්මින් මුරපදය වෙනස් කිරීමට ඔබට විශ්වාසද?')) {
+            db.ref('admin/password').set(newPass)
+                .then(() => {
+                    alert('මුරපදය සාර්ථකව වෙනස් කළා!');
+                    document.getElementById('new-admin-pass').value = '';
+                })
+                .catch(err => alert('දෝෂයක් සිදු විය: ' + err.message));
         }
     }
 
@@ -279,12 +365,22 @@
         const target = document.getElementById('notice-target').value;
         const color = document.getElementById('notice-color').value;
         const msg = document.getElementById('notice-msg').value.trim();
+        const expiryVal = document.getElementById('notice-expiry').value;
 
         if (!msg) return alert('පණිවුඩය ඇතුළත් කරන්න');
 
-        db.ref('notices').push({ target, color, msg, date: Date.now() }, () => {
+        const noticeObj = {
+            target,
+            color,
+            msg,
+            createdDate: Date.now(),
+            expiryTime: expiryVal ? new Date(expiryVal).getTime() : null // Expiry time එකක් ඇතුළත් කළේ නැත්නම් null වේ.
+        };
+
+        db.ref('notices').push(noticeObj, () => {
             alert('නිවේදනය පළ කළා!');
             document.getElementById('notice-msg').value = '';
+            document.getElementById('notice-expiry').value = '';
         });
     }
 
