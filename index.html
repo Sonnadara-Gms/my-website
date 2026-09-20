@@ -28,7 +28,7 @@
         tr.expense { background-color: #fce8e6; color: #c5221f; font-weight: bold; }
         .hidden { display: none; }
     </style>
-    <!-- Firebase SDKs -->
+    <!-- Firebase SDKs (v8) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 </head>
@@ -129,34 +129,22 @@
 
 <script>
     // --- FIREBASE CONFIGURATION ---
-    // මෙතැනට ඔබේ Firebase Console එකෙන් ලබාගත් Config විස්තර ලබා දෙන්න:
-    // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+    const firebaseConfig = {
+      apiKey: "AIzaSyATaUAOYjNXW2Q-LN2yrxEnx44lrBUfgzM",
+      authDomain: "monny-9064c.firebaseapp.com",
+      databaseURL: "https://monny-9064c-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "monny-9064c",
+      storageBucket: "monny-9064c.firebasestorage.app",
+      messagingSenderId: "601469526246",
+      appId: "1:601469526246:web:23a31393af340068725b27",
+      measurementId: "G-YGWHNMMF2D"
+    };
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyATaUAOYjNXW2Q-LN2yrxEnx44lrBUfgzM",
-  authDomain: "monny-9064c.firebaseapp.com",
-  databaseURL: "https://monny-9064c-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "monny-9064c",
-  storageBucket: "monny-9064c.firebasestorage.app",
-  messagingSenderId: "601469526246",
-  appId: "1:601469526246:web:23a31393af340068725b27",
-  measurementId: "G-YGWHNMMF2D"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-
+    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
-    const ADMIN_PASS = "admin123"; // ඔබ කැමති ඇඩ්මින් මුරපදය මෙතැනට යොදන්න
+    const ADMIN_PASS = "admin123";
 
     function loadAdminDropdowns() {
         db.ref('members').once('value', snapshot => {
@@ -256,6 +244,8 @@ const analytics = getAnalytics(app);
                 alert('සාමාජිකයා සාර්ථකව ඇතුළත් කළා');
                 document.getElementById('new-mem-id').value = '';
                 loadAdminDropdowns();
+            } else {
+                alert('දෝෂයක් සිදු විය: ' + err.message);
             }
         });
     }
@@ -304,4 +294,3 @@ const analytics = getAnalytics(app);
 
 </body>
 </html>
-
