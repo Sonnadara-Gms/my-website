@@ -50,7 +50,7 @@
     <!-- Admin Login Modal -->
     <div id="admin-login-sec" class="card hidden">
         <h3>ඇඩ්මින් ප්‍රවේශය</h3>
-        <input type="password" id="admin-pass-input" placeholder="ඇඩ්මින් මුරපදය">
+        <input type="password" id="admin-pass-input" placeholder="ඇඩ්මින් මුරපදය" value="admin123">
         <button onclick="adminLogin()">Login</button>
         <button onclick="toggleAdminLogin()" style="background:#dc3545;">අවලංගු කරන්න</button>
     </div>
@@ -88,6 +88,7 @@
         <div class="card" style="border: 1px dashed #6c757d;">
             <h4>ඇඩ්මින් මුරපදය වෙනස් කිරීම</h4>
             <input type="password" id="new-admin-pass" placeholder="නව ඇඩ්මින් මුරපදය">
+            <input type="password" id="confirm-admin-pass" placeholder="නව ඇඩ්මින් මුරපදය තහවුරු කරන්න">
             <button onclick="changeAdminPassword()" style="background: #28a745;">මුරපදය සුරකින්න</button>
         </div>
 
@@ -162,12 +163,27 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
+    let initialNoticeLoad = true;
+
     // Default Password එක Database එකේ නැත්නම් Set කිරීම
     db.ref('admin/password').once('value', snapshot => {
         if (!snapshot.exists()) {
             db.ref('admin/password').set('admin123');
         }
     });
+
+    // Page එක Reload වූ විට සාමාජිකයා කලින් ලොග් වී ඇත්දැයි බැලීම
+    window.onload = function() {
+        const savedMemberId = localStorage.getItem('loggedInMemberId');
+        if (savedMemberId) {
+            loadMemberDashboard(savedMemberId);
+        }
+        
+        // Request Web Notification Permission
+        if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+            Notification.requestPermission();
+        }
+    };
 
     function loadAdminDropdowns() {
         db.ref('members').once('value', snapshot => {
@@ -192,13 +208,18 @@
             if (!snapshot.exists()) {
                 return alert('එවැනි සාමාජික අංකයක් හමුවූයේ නැත.');
             }
-            document.getElementById('member-login-sec').classList.add('hidden');
-            document.getElementById('member-view-sec').classList.remove('hidden');
-            document.getElementById('disp-member-id').innerText = 'සාමාජික අංකය: ' + id;
-            
-            listenToMemberData(id);
-            listenToNotices(id);
+            localStorage.setItem('loggedInMemberId', id); // Save session
+            loadMemberDashboard(id);
         });
+    }
+
+    function loadMemberDashboard(id) {
+        document.getElementById('member-login-sec').classList.add('hidden');
+        document.getElementById('member-view-sec').classList.remove('hidden');
+        document.getElementById('disp-member-id').innerText = 'සාමාජික අංකය: ' + id;
+        
+        listenToMemberData(id);
+        listenToNotices(id);
     }
 
     function listenToMemberData(id) {
@@ -237,16 +258,21 @@
 
             for (let k in notices) {
                 const n = notices[k];
-                // කල් ඉකුත් වීමේ වේලාව පරීක්ෂා කිරීම
                 if (n.expiryTime && now > n.expiryTime) {
-                    continue; // කල් ඉකුත් වී ඇත්නම් සාමාජිකයාට පෙන්වන්නේ නැත
+                    continue;
                 }
 
                 if (n.target === 'ALL' || n.target === memId) {
                     html += `<div class="notice-box ${n.color}"><span>${n.msg}</span></div>`;
+                    
+                    // Web Notification යැවීම (නව නිවේදන සඳහා පමණක්)
+                    if (!initialNoticeLoad && "Notification" in window && Notification.permission === "granted") {
+                        new Notification("සමිතියේ නව නිවේදනයක්", { body: n.msg });
+                    }
                 }
             }
             document.getElementById('announcements-area').innerHTML = html;
+            initialNoticeLoad = false;
         });
     }
 
@@ -309,13 +335,22 @@
 
     function changeAdminPassword() {
         const newPass = document.getElementById('new-admin-pass').value.trim();
-        if (!newPass) return alert('කරුණාකර නව මුරපදයක් ඇතුළත් කරන්න');
+        const confirmPass = document.getElementById('confirm-admin-pass').value.trim();
+
+        if (!newPass || !confirmPass) {
+            return alert('කරුණාකර මුරපද පෙට්ටි දෙකම පුරවන්න!');
+        }
+
+        if (newPass !== confirmPass) {
+            return alert('ඇතුළත් කළ මුරපද දෙක එකිනෙකට සමාන නොවේ!');
+        }
 
         if (confirm('ඇඩ්මින් මුරපදය වෙනස් කිරීමට ඔබට විශ්වාසද?')) {
             db.ref('admin/password').set(newPass)
                 .then(() => {
                     alert('මුරපදය සාර්ථකව වෙනස් කළා!');
                     document.getElementById('new-admin-pass').value = '';
+                    document.getElementById('confirm-admin-pass').value = '';
                 })
                 .catch(err => alert('දෝෂයක් සිදු විය: ' + err.message));
         }
@@ -374,7 +409,7 @@
             color,
             msg,
             createdDate: Date.now(),
-            expiryTime: expiryVal ? new Date(expiryVal).getTime() : null // Expiry time එකක් ඇතුළත් කළේ නැත්නම් null වේ.
+            expiryTime: expiryVal ? new Date(expiryVal).getTime() : null
         };
 
         db.ref('notices').push(noticeObj, () => {
@@ -384,7 +419,11 @@
         });
     }
 
-    function logoutMember() { location.reload(); }
+    function logoutMember() { 
+        localStorage.removeItem('loggedInMemberId'); // Clear session
+        location.reload(); 
+    }
+    
     function adminLogout() { location.reload(); }
 </script>
 
