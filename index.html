@@ -29,6 +29,8 @@
         .hidden { display: none; }
         .del-btn { background: #dc3545; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; width: auto; margin: 0; }
         .small-text { font-size: 11px; opacity: 0.85; font-weight: normal; }
+        .flex-row { display: flex; align-items: center; gap: 10px; }
+        .flex-row input[type="checkbox"] { width: auto; }
     </style>
     <!-- Firebase SDKs (v8) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
@@ -87,6 +89,7 @@
         <!-- Change Password Card -->
         <div class="card" style="border: 1px dashed #6c757d;">
             <h4>ඇඩ්මින් මුරපදය වෙනස් කිරීම</h4>
+            <input type="password" id="current-admin-pass" placeholder="දැනට පවතින ඇඩ්මින් මුරපදය">
             <input type="password" id="new-admin-pass" placeholder="නව ඇඩ්මින් මුරපදය">
             <input type="password" id="confirm-admin-pass" placeholder="නව ඇඩ්මින් මුරපදය තහවුරු කරන්න">
             <button onclick="changeAdminPassword()" style="background: #28a745;">මුරපදය සුරකින්න</button>
@@ -97,6 +100,14 @@
             <h4>නව සාමාජිකයෙකු එකතු කිරීම</h4>
             <input type="text" id="new-mem-id" placeholder="සාමාජික අංකය (උදා: M001)">
             <button onclick="addMember()">සාමාජිකයා එකතු කරන්න</button>
+        </div>
+
+        <!-- Delete Member -->
+        <div class="card">
+            <h4>සාමාජික ගිණුමක් ඉවත් කිරීම</h4>
+            <label>ඉවත් කිරීමට සාමාජිකයා තෝරන්න:</label>
+            <select id="delete-mem-select"></select>
+            <button onclick="deleteMember()" style="background:#dc3545;">සාමාජික ගිණුම මකා දමන්න</button>
         </div>
 
         <!-- Add Transaction -->
@@ -115,6 +126,32 @@
             <input type="text" id="tx-desc" placeholder="විස්තරය (අනිවාර්යයි)">
             <input type="number" id="tx-amount" placeholder="මුදල (රු.)">
             <button onclick="submitTransaction()">ගනුදෙනුව සුරකින්න</button>
+        </div>
+
+        <!-- Delete Transactions -->
+        <div class="card">
+            <h4>පැරණි ගනුදෙනු ලැයිස්තුවෙන් ඉවත් කිරීම</h4>
+            <label>සාමාජිකයා තෝරන්න:</label>
+            <select id="del-tx-mem-select" onchange="loadMemberTransactionsForDelete()"></select>
+            
+            <div id="tx-delete-container" class="hidden">
+                <div class="flex-row" style="margin: 10px 0;">
+                    <input type="checkbox" id="select-all-tx" onchange="toggleSelectAllTx(this)">
+                    <label for="select-all-tx"><b>සියලුම ගනුදෙනු තෝරන්න (Select All)</b></label>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>තෝරන්න</th>
+                            <th>දිනය</th>
+                            <th>විස්තරය</th>
+                            <th>මුදල</th>
+                        </tr>
+                    </thead>
+                    <tbody id="del-tx-table-body"></tbody>
+                </table>
+                <button onclick="deleteSelectedTransactions()" style="background:#dc3545; margin-top:10px;">තෝරාගත් ගනුදෙනු ඉවත් කරන්න</button>
+            </div>
         </div>
 
         <!-- Add Announcement -->
@@ -159,27 +196,23 @@
       measurementId: "G-YGWHNMMF2D"
     };
 
-    // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
 
     let initialNoticeLoad = true;
 
-    // Default Password එක Database එකේ නැත්නම් Set කිරීම
     db.ref('admin/password').once('value', snapshot => {
         if (!snapshot.exists()) {
             db.ref('admin/password').set('admin123');
         }
     });
 
-    // Page එක Reload වූ විට සාමාජිකයා කලින් ලොග් වී ඇත්දැයි බැලීම
     window.onload = function() {
         const savedMemberId = localStorage.getItem('loggedInMemberId');
         if (savedMemberId) {
             loadMemberDashboard(savedMemberId);
         }
         
-        // Request Web Notification Permission
         if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
             Notification.requestPermission();
         }
@@ -190,13 +223,31 @@
             const members = snapshot.val() || {};
             let txSelect = '<option value="ALL">සියලුම සාමාජිකයන්ට (Bulk)</option>';
             let noticeSelect = '<option value="ALL">සියලු සාමාජිකයන්ට</option>';
+            let memOptions = '<option value="">-- සාමාජිකයෙකු තෝරන්න --</option>';
             
             for (let id in members) {
                 txSelect += `<option value="${id}">${id}</option>`;
                 noticeSelect += `<option value="${id}">${id}</option>`;
+                memOptions += `<option value="${id}">${id}</option>`;
             }
             document.getElementById('tx-target').innerHTML = txSelect;
             document.getElementById('notice-target').innerHTML = noticeSelect;
+            document.getElementById('delete-mem-select').innerHTML = memOptions;
+            document.getElementById('del-tx-mem-select').innerHTML = memOptions;
+        });
+    }
+
+    function verifyAdminPassword(callback) {
+        const enteredPass = prompt("මෙම ක්‍රියාව සිදු කිරීමට ඇඩ්මින් මුරපදය (Admin Password) ඇතුළත් කරන්න:");
+        if (!enteredPass) return;
+
+        db.ref('admin/password').once('value', snapshot => {
+            const currentPass = snapshot.val() || 'admin123';
+            if (enteredPass === currentPass) {
+                callback();
+            } else {
+                alert('ඇතුළත් කළ ඇඩ්මින් මුරපදය වැරදියි!');
+            }
         });
     }
 
@@ -208,7 +259,7 @@
             if (!snapshot.exists()) {
                 return alert('එවැනි සාමාජික අංකයක් හමුවූයේ නැත.');
             }
-            localStorage.setItem('loggedInMemberId', id); // Save session
+            localStorage.setItem('loggedInMemberId', id);
             loadMemberDashboard(id);
         });
     }
@@ -226,7 +277,7 @@
         db.ref('members/' + id).on('value', snapshot => {
             const data = snapshot.val() || {};
             const txs = data.transactions || {};
-            let balance = 0;
+            let balance = parseFloat(data.openingBalance || 0);
             let rows = '';
 
             const txList = Object.values(txs).sort((a,b) => new Date(b.date) - new Date(a.date));
@@ -258,14 +309,11 @@
 
             for (let k in notices) {
                 const n = notices[k];
-                if (n.expiryTime && now > n.expiryTime) {
-                    continue;
-                }
+                if (n.expiryTime && now > n.expiryTime) continue;
 
                 if (n.target === 'ALL' || n.target === memId) {
                     html += `<div class="notice-box ${n.color}"><span>${n.msg}</span></div>`;
                     
-                    // Web Notification යැවීම (නව නිවේදන සඳහා පමණක්)
                     if (!initialNoticeLoad && "Notification" in window && Notification.permission === "granted") {
                         new Notification("සමිතියේ නව නිවේදනයක්", { body: n.msg });
                     }
@@ -334,33 +382,40 @@
     }
 
     function changeAdminPassword() {
+        const currentPass = document.getElementById('current-admin-pass').value.trim();
         const newPass = document.getElementById('new-admin-pass').value.trim();
         const confirmPass = document.getElementById('confirm-admin-pass').value.trim();
 
-        if (!newPass || !confirmPass) {
-            return alert('කරුණාකර මුරපද පෙට්ටි දෙකම පුරවන්න!');
+        if (!currentPass || !newPass || !confirmPass) {
+            return alert('කරුණාකර සියලුම මුරපද පෙට්ටි පුරවන්න!');
         }
 
-        if (newPass !== confirmPass) {
-            return alert('ඇතුළත් කළ මුරපද දෙක එකිනෙකට සමාන නොවේ!');
-        }
+        db.ref('admin/password').once('value', snapshot => {
+            const realPass = snapshot.val() || 'admin123';
+            if (currentPass !== realPass) {
+                return alert('දැනට පවතින මුරපදය වැරදියි!');
+            }
 
-        if (confirm('ඇඩ්මින් මුරපදය වෙනස් කිරීමට ඔබට විශ්වාසද?')) {
+            if (newPass !== confirmPass) {
+                return alert('නව මුරපද දෙක එකිනෙකට සමාන නොවේ!');
+            }
+
             db.ref('admin/password').set(newPass)
                 .then(() => {
                     alert('මුරපදය සාර්ථකව වෙනස් කළා!');
+                    document.getElementById('current-admin-pass').value = '';
                     document.getElementById('new-admin-pass').value = '';
                     document.getElementById('confirm-admin-pass').value = '';
                 })
                 .catch(err => alert('දෝෂයක් සිදු විය: ' + err.message));
-        }
+        });
     }
 
     function addMember() {
         const id = document.getElementById('new-mem-id').value.trim();
         if (!id) return alert('අංකයක් ඇතුළත් කරන්න');
         
-        db.ref('members/' + id).set({ created: Date.now() }, err => {
+        db.ref('members/' + id).set({ created: Date.now(), openingBalance: 0 }, err => {
             if(!err) {
                 alert('සාමාජිකයා සාර්ථකව ඇතුළත් කළා');
                 document.getElementById('new-mem-id').value = '';
@@ -369,6 +424,23 @@
                 alert('දෝෂයක් සිදු විය: ' + err.message);
             }
         });
+    }
+
+    function deleteMember() {
+        const memId = document.getElementById('delete-mem-select').value;
+        if (!memId) return alert('කරුණාකර සාමාජිකයෙකු තෝරන්න');
+
+        if (confirm(`${memId} සාමාජික ගිණුම සම්පූර්ණයෙන්ම ඉවත් කිරීමට ඔබට විශ්වාසද?`)) {
+            verifyAdminPassword(() => {
+                db.ref('members/' + memId).remove()
+                    .then(() => {
+                        alert('සාමාජික ගිණුම ඉවත් කළා!');
+                        loadAdminDropdowns();
+                        document.getElementById('tx-delete-container').classList.add('hidden');
+                    })
+                    .catch(err => alert('දෝෂයක් සිදු විය: ' + err.message));
+            });
+        }
     }
 
     function submitTransaction() {
@@ -396,6 +468,81 @@
         }
     }
 
+    // --- DELETE TRANSACTIONS LOGIC ---
+    function loadMemberTransactionsForDelete() {
+        const memId = document.getElementById('del-tx-mem-select').value;
+        const container = document.getElementById('tx-delete-container');
+
+        if (!memId) {
+            container.classList.add('hidden');
+            return;
+        }
+
+        db.ref(`members/${memId}/transactions`).once('value', snapshot => {
+            const txs = snapshot.val() || {};
+            let rows = '';
+
+            for (let txKey in txs) {
+                const t = txs[txKey];
+                rows += `<tr>
+                    <td><input type="checkbox" class="tx-checkbox" value="${txKey}" data-type="${t.type}" data-amount="${t.amount}"></td>
+                    <td>${t.date}</td>
+                    <td>${t.desc}</td>
+                    <td>${t.type === 'INCOME' ? '+' : '-'}${t.amount}</td>
+                </tr>`;
+            }
+
+            document.getElementById('del-tx-table-body').innerHTML = rows || '<tr><td colspan="4">ගනුදෙනු නොමැත.</td></tr>';
+            document.getElementById('select-all-tx').checked = false;
+            container.classList.remove('hidden');
+        });
+    }
+
+    function toggleSelectAllTx(master) {
+        const checkboxes = document.querySelectorAll('.tx-checkbox');
+        checkboxes.forEach(cb => cb.checked = master.checked);
+    }
+
+    function deleteSelectedTransactions() {
+        const memId = document.getElementById('del-tx-mem-select').value;
+        const selectedCbs = document.querySelectorAll('.tx-checkbox:checked');
+
+        if (selectedCbs.length === 0) {
+            return alert('කරුණාකර ඉවත් කිරීම සඳහා අවම වශයෙන් එක් ගනුදෙනුවක්වත් තෝරන්න!');
+        }
+
+        if (confirm(`තෝරාගත් ගනුදෙනු ${selectedCbs.length} මකා දැමීමට ඔබට විශ්වාසද? (මුළු ශේෂය නොවෙනස්ව පවතිනු ඇත)`)) {
+            verifyAdminPassword(() => {
+                db.ref(`members/${memId}`).once('value', snapshot => {
+                    const memData = snapshot.val() || {};
+                    let currentOpeningBal = parseFloat(memData.openingBalance || 0);
+
+                    selectedCbs.forEach(cb => {
+                        const txKey = cb.value;
+                        const type = cb.getAttribute('data-type');
+                        const amount = parseFloat(cb.getAttribute('data-amount'));
+
+                        // මුළු එකතුව නොවනස්ව තැබීමට openingBalance එකට එකතු/අඩු කිරීම
+                        if (type === 'INCOME') {
+                            currentOpeningBal += amount;
+                        } else if (type === 'EXPENSE') {
+                            currentOpeningBal -= amount;
+                        }
+
+                        // ගනුදෙනුව Database එකෙන් මකා දැමීම
+                        db.ref(`members/${memId}/transactions/${txKey}`).remove();
+                    });
+
+                    // නව Opening Balance එක සුරැකීම
+                    db.ref(`members/${memId}`).update({ openingBalance: currentOpeningBal }, () => {
+                        alert('තෝරාගත් ගනුදෙනු සාර්ථකව ඉවත් කළා!');
+                        loadMemberTransactionsForDelete();
+                    });
+                });
+            });
+        }
+    }
+
     function submitNotice() {
         const target = document.getElementById('notice-target').value;
         const color = document.getElementById('notice-color').value;
@@ -420,7 +567,7 @@
     }
 
     function logoutMember() { 
-        localStorage.removeItem('loggedInMemberId'); // Clear session
+        localStorage.removeItem('loggedInMemberId');
         location.reload(); 
     }
     
